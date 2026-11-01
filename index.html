@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EcoPoints Portal</title>
+<style>
+:root{--bg:#f3f7f4;--card:#ffffff;--ink:#12231a;--mute:#5a6d62;--line:#dce6df;--brand:#1c9b52;--onbrand:#ffffff;--blue:#2f6fed;--red:#e5484d;--green:#1c9b52;--shadow:0 1px 3px rgba(0,0,0,.08);color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1713;--card:#18231d;--ink:#e8f1ec;--mute:#9bb0a5;--line:#2a3a31;--brand:#35c06f;--onbrand:#06210f;--blue:#6f9bff;--red:#ff7a7f;--green:#35c06f;--shadow:none;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1713;--card:#18231d;--ink:#e8f1ec;--mute:#9bb0a5;--line:#2a3a31;--brand:#35c06f;--onbrand:#06210f;--blue:#6f9bff;--red:#ff7a7f;--green:#35c06f;--shadow:none;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1,h2,h3{margin:0}
+.mute{color:var(--mute)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
+.login{max-width:420px;margin:8vh auto 0;display:grid;gap:12px;text-align:center}
+.login label{display:grid;gap:6px;text-align:left;font-weight:600}
+.logo{font-size:48px}
+input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
+.btn{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 16px;background:var(--brand);color:var(--onbrand);cursor:pointer}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
+.msg{color:var(--red);margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.top .btn{padding:8px 12px}
+.balance{text-align:center;background:var(--brand);color:var(--onbrand);border:0}
+.balance .big{font-size:56px;font-weight:800;line-height:1.1}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+.stat{text-align:center;padding:12px 8px}
+.stat b{font-size:24px;display:block}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.tabs{display:flex;gap:8px;margin:16px 0 12px}
+.tab{flex:1;font:inherit;font-weight:600;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.tab.on{background:var(--brand);color:var(--onbrand);border-color:var(--brand)}
+.rewards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.reward{display:grid;gap:8px;text-align:center}
+.reward .ic{font-size:36px}
+.cost{font-weight:700;color:var(--brand)}
+.hist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.hist li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.pos{color:var(--green);font-weight:700}.neg{color:var(--red);font-weight:700}
+details{margin-top:16px}
+summary{cursor:pointer;color:var(--mute)}
+.demo{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:16px;z-index:5}
+#modal[hidden]{display:none}
+.sheet{background:var(--card);border-radius:16px;padding:20px;max-width:360px;width:100%;display:grid;gap:12px;text-align:center}
+.sheet .row{display:flex;gap:8px}.sheet .row .btn{flex:1}
+.code{font:700 24px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:2px;padding:12px;border:2px dashed var(--brand);border-radius:10px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div id="modal" hidden></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TYPES={plastic_bottle:{n:"Plastic bottle",c:"var(--blue)"},aluminum_can:{n:"Aluminum can",c:"var(--red)"},crumpled_paper:{n:"Crumpled paper",c:"var(--green)"}};
+const REWARDS=[
+  {id:"tea",n:"Free iced tea",cost:10,ic:"🧋"},
+  {id:"snack",n:"Snack voucher",cost:20,ic:"🍪"},
+  {id:"supply",n:"School supply set",cost:30,ic:"✏️"},
+  {id:"meal",n:"Meal discount coupon",cost:50,ic:"🍱"}
+];
+let user=null,cur=null,pin=null,tab="rewards";
+async function api(p,body){
+  try{
+    const r=await fetch("/api/"+p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    return r.ok?j:{...j,error:j.error||"Something went wrong"};
+  }catch(e){return{error:"Cannot reach the server. Check your connection."};}
+}
+function viewLogin(msg,newId){
+  $("#app").innerHTML=`<section class="login card">
+    <div class="logo">♻️</div><h1>EcoPoints</h1>
+    <p class="mute">${newId?"New card? Create your account.":"Log in with your RFID card ID and PIN."}</p>
+    <label>Card ID<input id="cid" value="${esc(newId||"")}" placeholder="e.g. 04112233" autocomplete="off"></label>
+    ${newId?`<label>Your name<input id="nm" placeholder="Name" autocomplete="off"></label>`:""}
+    <label>PIN (4 to 8 digits)<input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>
+    ${msg?`<p class="msg" role="alert">${esc(msg)}</p>`:""}
+    <button class="btn" data-a="login">${newId?"Create account":"Log in"}</button>
+  </section>`;
+}
+function viewHome(){
+  const u=user;
+  const stats=Object.keys(TYPES).map(k=>`<div class="card stat"><b>${u.counts[k]||0}</b><span class="mute"><i class="dot" style="background:${TYPES[k].c}"></i>${TYPES[k].n}</span></div>`).join("");
+  const rewards=REWARDS.map(r=>`<div class="card reward"><div class="ic" aria-hidden="true">${r.ic}</div><h3>${r.n}</h3><div class="cost">${r.cost} points</div>
+    <button class="btn" data-a="redeem" data-r="${r.id}" ${u.points<r.cost?"disabled":""}>${u.points<r.cost?`Need ${r.cost-u.points} more`:"Redeem"}</button></div>`).join("");
+  const hist=u.history.length?u.history.slice().reverse().map(h=>`<li><span>${esc(h.label)}<br><small class="mute">${new Date(h.ts).toLocaleString()}</small></span><span class="${h.pts>0?"pos":"neg"}">${h.pts>0?"+":""}${h.pts}</span></li>`).join(""):`<li class="mute">No activity yet. Throw some trash in the machine!</li>`;
+  $("#app").innerHTML=`<div class="top"><div><h2>Hi, ${esc(u.name)}</h2><span class="mute">Card ${esc(cur)}</span></div><button class="btn ghost" data-a="logout">Log out</button></div>
+    <section class="card balance"><div>Your points</div><div class="big">${u.points}</div></section>
+    <div class="stats">${stats}</div>
+    <div class="tabs"><button class="tab ${tab==="rewards"?"on":""}" data-a="tab" data-t="rewards">Rewards</button><button class="tab ${tab==="history"?"on":""}" data-a="tab" data-t="history">History</button></div>
+    ${tab==="rewards"?`<div class="rewards">${rewards}</div>`:`<div class="card"><ul class="hist">${hist}</ul></div>`}
+    <button class="btn ghost" style="margin-top:16px" data-a="refresh">Refresh points</button>`;
+}
+function modal(html){const m=$("#modal");m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;m.hidden=false;}
+function closeModal(){$("#modal").hidden=true;}
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("[data-a]");if(!b)return;
+  const a=b.dataset.a;
+  if(a==="login"){
+    const id=($("#cid").value||"").trim().toUpperCase(),p=($("#pin").value||"").trim();
+    if(!id||!p)return viewLogin("Please enter your card ID and PIN.",$("#nm")?id:undefined);
+    b.disabled=true;
+    let r;
+    if($("#nm"))r=await api("register",{uid:id,name:$("#nm").value,pin:p});
+    else r=await api("login",{uid:id,pin:p});
+    if(r.error)return viewLogin(r.error,(r.unknown||$("#nm"))?id:undefined);
+    cur=id;pin=p;user=r.user;viewHome();
+  }
+  else if(a==="logout"){cur=pin=user=null;tab="rewards";viewLogin();}
+  else if(a==="tab"){tab=b.dataset.t;viewHome();}
+  else if(a==="refresh"){const r=await api("login",{uid:cur,pin});if(!r.error){user=r.user;viewHome();}}
+  else if(a==="redeem"){
+    const r=REWARDS.find(x=>x.id===b.dataset.r);
+    modal(`<div style="font-size:40px">${r.ic}</div><h3>Redeem ${r.n}?</h3><p class="mute">This will use ${r.cost} of your ${user.points} points.</p>
+      <div class="row"><button class="btn ghost" data-a="close">Cancel</button><button class="btn" data-a="confirm" data-r="${r.id}">Confirm</button></div>`);
+  }
+  else if(a==="confirm"){
+    const r=REWARDS.find(x=>x.id===b.dataset.r);
+    const res=await api("redeem",{uid:cur,pin,reward:r.id});
+    if(res.error)return modal(`<h3>Could not redeem</h3><p class="msg">${esc(res.error)}</p><button class="btn" data-a="close">OK</button>`);
+    user=res.user;
+    modal(`<div style="font-size:40px">🎉</div><h3>Reward ready!</h3><p class="mute">Show this code to claim your ${r.n}.</p><div class="code">${res.code}</div><button class="btn" data-a="close">Done</button>`);
+    viewHome();
+  }
+  else if(a==="close"){closeModal();}
+});
+viewLogin();
+</script>
+</body>
+</html>
